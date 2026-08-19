@@ -19,7 +19,11 @@ class Storage:
                     attempts INTEGER NOT NULL DEFAULT 0,
                     weak_spots TEXT NOT NULL DEFAULT '[]',
                     mastered TEXT NOT NULL DEFAULT '[]',
-                    scene TEXT
+                    scene TEXT,
+                    lesson_technique TEXT,
+                    lesson_stage TEXT NOT NULL DEFAULT 'idle',
+                    lesson_attempts INTEGER NOT NULL DEFAULT 0,
+                    lesson_successes INTEGER NOT NULL DEFAULT 0
                 );
                 CREATE TABLE IF NOT EXISTS attempts (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -32,6 +36,17 @@ class Storage:
                 );
                 """
             )
+            for statement in (
+                "ALTER TABLE users ADD COLUMN lesson_technique TEXT",
+                "ALTER TABLE users ADD COLUMN lesson_stage TEXT NOT NULL DEFAULT 'idle'",
+                "ALTER TABLE users ADD COLUMN lesson_attempts INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE users ADD COLUMN lesson_successes INTEGER NOT NULL DEFAULT 0",
+            ):
+                try:
+                    db.execute(statement)
+                except sqlite3.OperationalError as exc:
+                    if "duplicate column name" not in str(exc):
+                        raise
 
     def _connect(self):
         return sqlite3.connect(self.path)
@@ -39,7 +54,9 @@ class Storage:
     def get_user(self, chat_id: int) -> UserState:
         with self._connect() as db:
             row = db.execute(
-                "SELECT chat_id, level, wins, attempts, weak_spots, mastered, scene FROM users WHERE chat_id = ?",
+                """SELECT chat_id, level, wins, attempts, weak_spots, mastered, scene,
+                          lesson_technique, lesson_stage, lesson_attempts, lesson_successes
+                   FROM users WHERE chat_id = ?""",
                 (chat_id,),
             ).fetchone()
         if not row:
@@ -50,16 +67,22 @@ class Storage:
             chat_id=row[0], level=row[1], wins=row[2], attempts=row[3],
             weak_spots=json.loads(row[4]), mastered=json.loads(row[5]),
             scene=json.loads(row[6]) if row[6] else None,
+            lesson_technique=row[7], lesson_stage=row[8],
+            lesson_attempts=row[9], lesson_successes=row[10],
         )
 
     def save_user(self, state: UserState) -> None:
         with self._connect() as db:
             db.execute(
-                """INSERT INTO users(chat_id, level, wins, attempts, weak_spots, mastered, scene)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """INSERT INTO users(
+                    chat_id, level, wins, attempts, weak_spots, mastered, scene,
+                    lesson_technique, lesson_stage, lesson_attempts, lesson_successes
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(chat_id) DO UPDATE SET level=excluded.level, wins=excluded.wins,
                 attempts=excluded.attempts, weak_spots=excluded.weak_spots, mastered=excluded.mastered,
-                scene=excluded.scene""",
+                scene=excluded.scene, lesson_technique=excluded.lesson_technique,
+                lesson_stage=excluded.lesson_stage, lesson_attempts=excluded.lesson_attempts,
+                lesson_successes=excluded.lesson_successes""",
                 state.to_row(),
             )
 
