@@ -15,7 +15,7 @@ def test_user_progress_survives_reload(tmp_path: Path):
         weak_spots=["поворот"],
         scene={"title": "Сцена"},
         lesson_technique="перевёртыш",
-        lesson_stage="guided",
+        lesson_stage="fill",
         lesson_attempts=2,
         lesson_successes=1,
     )
@@ -28,6 +28,6 @@ def test_user_progress_survives_reload(tmp_path: Path):
     assert restored.weak_spots == ["поворот"]
     assert restored.scene == {"title": "Сцена"}
     assert restored.lesson_technique == "перевёртыш"
-    assert restored.lesson_stage == "guided"
+    assert restored.lesson_stage == "fill"
     assert restored.lesson_attempts == 2
     assert restored.lesson_successes == 1
