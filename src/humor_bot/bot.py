@@ -51,11 +51,21 @@ class HumorBot:
     async def new_scene(self, chat_id: int):
         state = self.storage.get_user(chat_id)
         await self.telegram.action(chat_id)
+        focus_technique = state.lesson_technique or None
         try:
-            scene = await self.ai.scene(state, self.recent_titles.get(chat_id, []))
+            scene = await self.ai.scene(
+                state,
+                self.recent_titles.get(chat_id, []),
+                focus_technique=focus_technique,
+            )
         except AIError as exc:
             await self.telegram.send(chat_id, f"Не получилось создать ситуацию: {esc(str(exc))}", self.menu())
             return
+        if not state.lesson_technique:
+            state.lesson_technique = scene["technique"]
+            state.lesson_stage = "learning"
+            state.lesson_attempts = 0
+            state.lesson_successes = 0
         state.scene = scene
         self.storage.save_user(state)
         self.recent_titles.setdefault(chat_id, []).append(scene["title"])
@@ -80,6 +90,7 @@ class HumorBot:
 
     async def review_answer(self, chat_id: int, answer: str, state: UserState, voice: bool = False):
         await self.telegram.action(chat_id)
+        previous_scene = state.scene or {}
         try:
             review = await self.ai.review(state.scene or {}, answer, state)
         except AIError as exc:
@@ -89,17 +100,56 @@ class HumorBot:
         state.attempts += 1
         if score >= 70:
             state.wins += 1
+            state.lesson_successes += 1
         else:
+            state.lesson_successes = 0
             if review["technique"] not in state.weak_spots:
                 state.weak_spots = (state.weak_spots + [review["technique"]])[-5:]
+        state.lesson_attempts += 1
         if state.wins and state.wins % 3 == 0:
             state.level = min(5, state.level + 1)
-        if score >= 80 and review["technique"] not in state.mastered:
+        lesson_complete = state.lesson_successes >= 2
+        if lesson_complete and score >= 80 and review["technique"] not in state.mastered:
             state.mastered = (state.mastered + [review["technique"]])[-8:]
         self.storage.add_attempt(chat_id, answer, review)
-        state.scene = None
+        technique = state.lesson_technique or review["technique"]
+        if lesson_complete:
+            state.scene = None
+            state.lesson_technique = None
+            state.lesson_stage = "idle"
+            state.lesson_attempts = 0
+            state.lesson_successes = 0
+            self.storage.save_user(state)
+            await self.telegram.send(
+                chat_id,
+                self.review_text(review, answer, voice) + "\n\n<b>Приём закреплён.</b> Переходим к следующему.",
+                self.menu(),
+            )
+            return
+
+        state.lesson_technique = technique
+        state.lesson_stage = "guided"
+        try:
+            practice_scene = await self.ai.scene(
+                state,
+                self.recent_titles.get(chat_id, []),
+                focus_technique=technique,
+                guided_template=review["template"],
+            )
+        except AIError:
+            state.scene = previous_scene
+            self.storage.save_user(state)
+            await self.telegram.send(chat_id, self.review_text(review, answer, voice), self.answer_menu())
+            return
+
+        state.scene = practice_scene
         self.storage.save_user(state)
-        await self.telegram.send(chat_id, self.review_text(review, answer, voice), self.menu())
+        await self.telegram.send(chat_id, self.review_text(review, answer, voice), self.answer_menu())
+        await self.telegram.send(
+            chat_id,
+            "<b>Закрепим приём на новой ситуации.</b> Ответь одной короткой фразой:\n\n" + self.scene_text(practice_scene),
+            self.answer_menu(),
+        )
 
     async def progress(self, chat_id: int):
         state = self.storage.get_user(chat_id)
@@ -114,7 +164,15 @@ class HumorBot:
     @staticmethod
     def review_text(review: dict, answer: str, voice: bool) -> str:
         source = "Голосовой ответ" if voice else "Твой ответ"
-        return f"<b>{esc(review['verdict'])} · {review['score']}/100</b>\n\n{source}: «{esc(answer)}»\n\n{esc(review['summary'])}\n\n<b>Приём:</b> {esc(review['technique'])}\n{esc(review['theory'])}\n\n<b>Попробуй так:</b> {esc(review['example'])}"
+        return (
+            f"<b>{esc(review['verdict'])} · {review['score']}/100</b>\n\n"
+            f"{source}: «{esc(answer)}»\n\n"
+            f"{esc(review['summary'])}\n\n"
+            f"<b>Как работает:</b> {esc(review['theory'])}\n"
+            f"<b>Пример:</b> {esc(review['example'])}\n"
+            f"<b>Шаблон:</b> {esc(review['template'])}\n"
+            f"<b>Следующий шаг:</b> {esc(review['next_step'])}"
+        )
 
     @staticmethod
     def menu():
