@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: humor-telegram-bot
+    runtime: python
+    rootDir: .
+    plan: free
+    buildCommand: pip install -e .
+    startCommand: python -m humor_bot.main
+    healthCheckPath: /healthz
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: OPENROUTER_MODEL
+        value: google/gemma-4-26b-a4b-it:free
+      - key: WHISPER_MODEL
+        value: base
+      - key: WHISPER_DEVICE
+        value: cpu
+      - key: WHISPER_COMPUTE_TYPE
+        value: int8
+      - key: DATABASE_PATH
+        value: data/humor.sqlite3
