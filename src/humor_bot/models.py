@@ -11,6 +11,10 @@ class UserState:
     weak_spots: list[str] = field(default_factory=list)
     mastered: list[str] = field(default_factory=list)
     scene: dict | None = None
+    lesson_technique: str | None = None
+    lesson_stage: str = "idle"
+    lesson_attempts: int = 0
+    lesson_successes: int = 0
 
     def to_row(self) -> tuple:
         return (
@@ -21,4 +25,8 @@ class UserState:
             json.dumps(self.weak_spots, ensure_ascii=False),
             json.dumps(self.mastered, ensure_ascii=False),
             json.dumps(self.scene, ensure_ascii=False) if self.scene else None,
+            self.lesson_technique,
+            self.lesson_stage,
+            self.lesson_attempts,
+            self.lesson_successes,
         )
