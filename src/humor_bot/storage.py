@@ -63,11 +63,16 @@ class Storage:
             state = UserState(chat_id=chat_id)
             self.save_user(state)
             return state
+        scene = json.loads(row[6]) if row[6] else None
+        lesson_technique = row[7] or (scene.get("technique") if scene else None)
+        lesson_stage = row[8] or "idle"
+        if scene and lesson_technique and lesson_stage in {"idle", "learning", "guided"}:
+            lesson_stage = "choice"
         return UserState(
             chat_id=row[0], level=row[1], wins=row[2], attempts=row[3],
             weak_spots=json.loads(row[4]), mastered=json.loads(row[5]),
-            scene=json.loads(row[6]) if row[6] else None,
-            lesson_technique=row[7], lesson_stage=row[8],
+            scene=scene,
+            lesson_technique=lesson_technique, lesson_stage=lesson_stage,
             lesson_attempts=row[9], lesson_successes=row[10],
         )
 
